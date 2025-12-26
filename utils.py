@@ -1,10 +1,6 @@
 import warnings
-import inspect
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Dict, Any
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-from matplotlib.axes import Axes
-
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -279,80 +275,6 @@ def anova_full_report(
 
     return results
 
-
-
-
-def plot_tukey(
-    tukey: Any, 
-    ax: Optional[Axes] = None, 
-    title: Optional[str] = None
-) -> Tuple[Figure, Axes]:
-    """
-    Plot Tukey HSD test results.
-    
-    Args:
-        tukey: Tukey test results object with plot() or plot_simultaneous() method
-        ax: Optional matplotlib axes to plot on
-        title: Optional title for the plot
-        
-    Returns:
-        Tuple of (figure, axes)
-        
-    Raises:
-        AttributeError: If tukey object doesn't have required plotting methods
-    """
-    # Create figure and axes if not provided
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-    else:
-        fig = ax.figure
-    
-    # Try using the simple plot() method first
-    if hasattr(tukey, "plot") and callable(tukey.plot):
-        result = tukey.plot()
-        if isinstance(result, Figure):
-            fig = result
-            ax = fig.axes[0] if fig.axes else ax
-    
-    # Fall back to plot_simultaneous() method
-    elif hasattr(tukey, "plot_simultaneous") and callable(tukey.plot_simultaneous):
-        sig = inspect.signature(tukey.plot_simultaneous)
-        params = sig.parameters
-        
-        kwargs = {}
-        
-        # Add ax parameter if supported
-        if "ax" in params:
-            kwargs["ax"] = ax
-        
-        # Handle required comparison_name parameter
-        if "comparison_name" in params:
-            param = params["comparison_name"]
-            # Check if parameter has no default (is required)
-            if param.default is inspect.Parameter.empty:
-                # Try to get a valid comparison name
-                if hasattr(tukey, "groupsunique") and len(tukey.groupsunique) > 0:
-                    kwargs["comparison_name"] = tukey.groupsunique[0]
-                else:
-                    # Fallback to first group or 0
-                    kwargs["comparison_name"] = 0
-        
-        result = tukey.plot_simultaneous(**kwargs)
-        if isinstance(result, Figure):
-            fig = result
-            ax = fig.axes[0] if fig.axes else ax
-    
-    else:
-        raise AttributeError(
-            "Unsupported Tukey results object: expected 'plot()' or "
-            "'plot_simultaneous()' method."
-        )
-    
-    # Set title if provided
-    if title is not None:
-        ax.set_title(title)
-    
-    return fig, ax
 
 
 def chi2_association_report(
