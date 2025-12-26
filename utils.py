@@ -1,17 +1,19 @@
 import warnings
 import inspect
-from typing import Dict, Any
+from typing import Optional, Tuple, Dict, Any
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.axes import Axes
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 import statsmodels.formula.api as smf
 from statsmodels.stats.anova import anova_lm
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
-from scipy.stats import levene, shapiro, kruskal
+from scipy.stats import levene, shapiro, kruskal, chi2_contingency, fisher_exact
 import statsmodels.api as sm
 
 import pingouin as pg
@@ -278,11 +280,6 @@ def anova_full_report(
     return results
 
 
-import inspect
-from typing import Any, Optional, Tuple
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-from matplotlib.axes import Axes
 
 
 def plot_tukey(
@@ -356,3 +353,160 @@ def plot_tukey(
         ax.set_title(title)
     
     return fig, ax
+
+
+def chi2_association_report(
+    df: pd.DataFrame,
+    col_a: str,
+    col_b: str,
+    fisher_threshold: int = 5,
+    permutation: int = 0,
+    random_state: Optional[int] = None,
+    show_plot: bool = True,
+    verbose: bool = True
+) -> Dict[str, Any]:
+    """
+    Check association between two categorical columns using chi-square and diagnostics.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing the two categorical columns.
+    col_a, col_b : str
+        Column names (categorical features).
+    fisher_threshold : int
+        If smallest expected cell < fisher_threshold for a 2x2 table, run Fisher exact test.
+    permutation : int
+        Number of permutation repetitions to compute empirical p-value (0 to disable).
+    random_state : Optional[int]
+        Random seed for permutation test / reproducibility.
+    show_plot : bool
+        Show standardized residual heatmap.
+    verbose : bool
+        Print interpretive messages.
+
+    Returns
+    -------
+    results : dict
+        Keys include: contingency, observed, expected, chi2, p_value, dof, cramers_v,
+        std_residuals (DataFrame), fisher (if used), permutation_p (if computed), recommendation.
+    """
+    # 0) basic checks
+    if col_a not in df.columns or col_b not in df.columns:
+        raise ValueError("col_a and col_b must exist in df")
+
+    # 1) Prepare data
+    df_work = df[[col_a, col_b]].copy() # 3) Build contingency table
+    contingency = pd.crosstab(df_work[col_a], df_work[col_b])
+    observed = contingency.values
+    r, c = contingency.shape
+
+    # 4) Run χ² test (SciPy). Use Yates correction for 2x2 by default (chi2_contingency handles it).
+    try:
+        chi2, p, dof, expected = chi2_contingency(observed, correction=True)
+    except Exception as e:
+        raise RuntimeError(f"chi2_contingency failed: {e}")
+
+    # 5) For 2x2 with small expected counts, compute Fisher exact (if applicable)
+    fisher_res = None
+    smallest_expected = expected.min() if expected.size > 0 else np.nan
+    if r == 2 and c == 2 and smallest_expected < fisher_threshold:
+        # fisher_exact expects a 2x2 table as [[a,b],[c,d]]
+        try:
+            oddsratio, fisher_p = fisher_exact(observed)
+            fisher_res = dict(oddsratio=oddsratio, p_value=fisher_p)
+        except Exception:
+            fisher_res = None
+
+    # 6) Permutation test (empirical p-value) if requested
+    permutation_p = None
+    if permutation and permutation > 0:
+        rng = np.random.default_rng(random_state)
+        observed_chi2 = chi2
+        greater = 0
+        flat_a = df_work[col_a].values
+        flat_b = df_work[col_b].values
+        for _ in range(permutation):
+            # shuffle B and recompute chi2_on_perm
+            rng.shuffle(flat_b)
+            perm_tab = pd.crosstab(flat_a, flat_b).values
+            try:
+                chi2_perm, _, _, _ = chi2_contingency(perm_tab, correction=True)
+            except Exception:
+                chi2_perm = 0.0
+            if chi2_perm >= observed_chi2:
+                greater += 1
+        # +1 for observed; use (greater+1)/(permutation+1)
+        permutation_p = (greater + 1) / (permutation + 1)
+
+    # 7) Compute effect size: Cramér's V
+    n = observed.sum()
+    denom = n * (min(r - 1, c - 1))
+    cramers_v = np.sqrt(chi2 / denom) if denom > 0 else np.nan
+
+    # 8) Standardized residuals: (O - E)/sqrt(E)
+    std_resid = (observed - expected) / np.sqrt(expected)
+    std_resid_df = pd.DataFrame(std_resid, index=contingency.index, columns=contingency.columns)
+
+    # 9) Warning rules for small expected counts
+    small_cells = (expected < 5).sum()
+    pct_small = small_cells / expected.size if expected.size > 0 else 0.0
+    small_expected_warning = pct_small > 0.2 or (expected.min() < 1)
+
+    # 10) Basic recommendation heuristic (guideline, not absolute)
+    # thresholds are heuristic: use domain & CV to confirm.
+    if p < 0.05:
+        if cramers_v >= 0.5:
+            rec = "strong_association -> likely redundant; consider merging or dropping one column (verify with model/CV)."
+        elif cramers_v >= 0.3:
+            rec = "moderate_association -> treat as related; consider merging, creating joint feature, or dropping one if redundant."
+        elif cramers_v >= 0.1:
+            rec = "weak_association -> small association; probably keep both and validate with CV; consider encoding that preserves identity."
+        else:
+            rec = "statistically_significant_but_tiny_effect -> likely negligible in practice; deprioritize unless domain says otherwise."
+    else:
+        rec = "no_significant_association -> features likely independent; you can keep both but consider dropping one if redundant with other logic."
+
+    if small_expected_warning:
+        rec += " WARNING: many small expected counts — chi-square p-value may be unreliable. Consider merging sparse categories or using permutation test / Fisher exact (2x2)."
+
+    # 11) Plot standardized residuals heatmap
+    if show_plot:
+        plt.figure(figsize=(max(6, c * 0.7), max(4, r * 0.5)))
+        sns.heatmap(std_resid_df, annot=True, fmt=".2f", cmap="RdBu_r", center=0)
+        plt.title(f"Standardized residuals ( (O-E)/sqrt(E) )\nchi2={chi2:.3f}, p={p:.3g}, cramers_v={cramers_v:.3f}")
+        plt.xlabel(col_b)
+        plt.ylabel(col_a)
+        plt.tight_layout()
+        plt.show()
+
+    # 12) Verbose printed summary
+    if verbose:
+        print(f"chi2 = {chi2:.4f}, p = {p:.4g}, dof = {dof}")
+        if fisher_res is not None:
+            print(f"Fisher exact (2x2) oddsratio = {fisher_res['oddsratio']:.4f}, p = {fisher_res['p_value']:.4g}")
+        if permutation_p is not None:
+            print(f"Permutation empirical p-value (permutations={permutation}) = {permutation_p:.4g}")
+        print(f"Cramér's V = {cramers_v:.4f}")
+        if small_expected_warning:
+            print("WARNING: small expected counts detected — interpret p-values with caution (consider merging categories).")
+        print("Recommendation (heuristic):", rec)
+
+    # 13) Build results dict
+    results: Dict[str, Any] = {
+        "contingency": contingency,
+        "observed": observed,
+        "expected": expected,
+        "chi2": float(chi2),
+        "p_value": float(p),
+        "dof": int(dof),
+        "cramers_v": float(cramers_v) if not np.isnan(cramers_v) else np.nan,
+        "std_residuals": std_resid_df,
+        "fisher": fisher_res,
+        "permutation_p": float(permutation_p) if permutation_p is not None else None,
+        "small_expected_warning": bool(small_expected_warning),
+        "pct_small_expected": float(pct_small),
+        "recommendation": rec,
+    }
+
+    return results
