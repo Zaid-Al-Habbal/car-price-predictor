@@ -3,6 +3,8 @@
 ![A picture from the project](./project-screenshot.png)
 
 A machine learning system for predicting car prices using a Random Forest regression model. The project implements a complete data science pipeline from raw data acquisition through model training, evaluation, and deployment as a production-ready web application.
+- [Website](https://car-price-predictor-7674.onrender.com/)
+- [Dataset Source](https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho/data?select=Car+details+v3.csv)
 
 ## Project Architecture
 
