@@ -53,13 +53,13 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.markdown('<div class="form-container">', unsafe_allow_html=True)
 
 with st.form("car_form"):
-    st.markdown("### 📝 Vehicle Details")
+    st.markdown("### Vehicle Details")
     
     # Basic Info Section
     st.markdown('<div class="section-header">Basic Information</div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
-        name = st.text_input("🚗 Car Name", "Hyundai i20", help="Enter the car model name")
+        name = st.text_input("🚙 Car Name", "Hyundai i20", help="Enter the car model name")
         year = st.number_input("📅 Year", min_value=1990, max_value=2025, value=2018, help="Manufacturing year")
     with col2:
         km_driven = st.number_input("🛣️ KM Driven", min_value=0, step=1000, value=50000, help="Total kilometers driven")
@@ -135,7 +135,7 @@ if submitted:
             """, unsafe_allow_html=True)
             
         except Exception as e:
-            st.markdown(f"""
+            st.markdown("""
                 <div class="result-card error-card">
                     <div class="result-icon">⚠️</div>
                     <div class="result-title">Prediction Failed</div>
