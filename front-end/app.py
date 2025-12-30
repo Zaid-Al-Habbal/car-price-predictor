@@ -87,7 +87,7 @@ with st.form("car_form"):
         transmission = st.selectbox("⚙️ Transmission", ["Manual", "Automatic"])
     with col2:
         seller_type = st.selectbox("👤 Seller Type", ["Individual", "Dealer", "Trustmark Dealer"])
-        owner = st.selectbox("🔑 Owner Type", ["First Owner", "Second Owner", "Third & Above Owner"])
+        owner = st.selectbox("🔑 Owner Type", ["First Owner", "Second Owner", "Third Owner", "Fourth & Above Owner", "Test Drive Car"])
     
     st.markdown("<br>", unsafe_allow_html=True)
     

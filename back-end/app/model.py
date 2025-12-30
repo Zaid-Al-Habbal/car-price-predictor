@@ -33,8 +33,6 @@ def normalize_mileage(df: pd.DataFrame) -> pd.Series:
 def group_seats(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    print(f"group seats df: {df}")
-
     conditions = [
         df["seats"] < 5,
         df["seats"] == 5,
