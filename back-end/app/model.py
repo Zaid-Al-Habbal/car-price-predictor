@@ -7,7 +7,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 
-MODEL_PATH = Path(__file__).resolve().parents[2] / "models" / "rf_model_pipeline_v1.pkl"
+MODEL_PATH = Path(__file__).resolve().parents[1] / "models" / "rf_model_pipeline_v1.pkl"
 
 
 def normalize_mileage(df: pd.DataFrame) -> pd.Series:
